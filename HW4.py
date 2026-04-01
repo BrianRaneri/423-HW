@@ -17,26 +17,23 @@ def update_solution(u_arr):
         neg_u_i5 = (u_arr[i-1]+u_arr[i])/2
         pos_u_i5 = (u_arr[i+1]+u_arr[i])/2
 
-        RHS = (1-(u_arr[i]**2)/2)*gprime(x_arr[i])/g(x_arr[i])
+        RHS = (1-((u_arr[i]**2)/2))*gprime(x_arr[i])/g(x_arr[i])
 
         if (neg_u_i5 > 0 and pos_u_i5 > 0):
             # Supersonic Point
-            u_arr_new[i]=RHS-(neg_u_i5*dt/dx)*(u_arr[i]-u_arr[i-1])+u_arr[i]
+            u_arr_new[i]=dt*RHS-(neg_u_i5*dt/dx)*(u_arr[i]-u_arr[i-1])+u_arr[i]
 
         elif (neg_u_i5 > 0 and pos_u_i5 < 0):
             # Shock Point
-            u_arr_new[i]=u_arr[i] + RHS - (neg_u_i5*dt/dx)*(u_arr[i]-u_arr[i-1]) - (pos_u_i5*dt/dx)*(u_arr[i+1]-u_arr[i])
+            u_arr_new[i]=u_arr[i] + dt*RHS - (neg_u_i5*dt/dx)*(u_arr[i]-u_arr[i-1]) - (pos_u_i5*dt/dx)*(u_arr[i+1]-u_arr[i])
 
         elif (neg_u_i5 <= 0 and pos_u_i5 >= 0):
             # Sonic Point
             u_arr_new[i]= (dt*RHS+u_arr[i]) / (1+(dt/(2*dx))*(u_arr[i+1]-u_arr[i-1]))
-            #dudx = (u_arr[i+1] - u_arr[i-1]) / (2*dx)
-            #u_arr_new[i] = u_arr[i] - dt * u_arr[i] * dudx + dt * RHS
-
 
         elif (neg_u_i5 < 0 and pos_u_i5 < 0):
             # Subsonic Point
-            u_arr_new[i]=RHS-(pos_u_i5*dt/dx)*(u_arr[i+1]-u_arr[i])+u_arr[i]
+            u_arr_new[i]=dt*RHS-(pos_u_i5*dt/dx)*(u_arr[i+1]-u_arr[i])+u_arr[i]
         else:
             pass
 
@@ -56,8 +53,8 @@ u_arr = np.zeros_like(x_arr)
 u_arr[0]=uix
 u_arr[-1]=uix
 
-max_iter = 20
-tol = 1e-3
+max_iter = 2000
+tol = 1e-6
 
 for i in range(max_iter):
     u_new = update_solution(u_arr)
@@ -70,12 +67,8 @@ for i in range(max_iter):
 
 plt.plot(x_arr,u_exact(x_arr),label='exact')
 plt.plot(x_arr,u_arr,label='Numerical')
+plt.title(fr'$u_{{ix}} = {uix:.3f}$')
+plt.grid(True)
+plt.xlim([0,1])
 plt.show()
 plt.legend()
-
-
-
-    
-
-
-
