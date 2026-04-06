@@ -22,18 +22,10 @@ def plot(arr,X=None,Y=None,type='resid',fig=None,ax=None,plabel=None):
 
         arr = np.array(arr)
         j_mid = arr.shape[1] // 2
-        phi_x_slice = arr[j_mid, :]  # shape (nx,)
-
-        print("arr.shape:", arr.shape)
-        print("X.shape, Y.shape:", X.shape, Y.shape)
-        print("j_mid:", j_mid)
-        
-        
-
-        # x-axis values (normalized 0 → 1)
+        phi_x_slice = arr[:, j_mid]
         x_vals = np.linspace(0, 1, arr.shape[0])
 
-        #ax.plot(x_vals, phi_x_slice, label=plabel)
+        ax.plot(x_vals, phi_x_slice, label=plabel)
         ax.set_xlabel('x')
         ax.set_ylabel(f'Phi(y=0.5)')
         ax.grid(True)
@@ -138,7 +130,6 @@ def jacobi(nx):
 L = 1
 W = 1
 
-
 exact_sol_arr, x50, y50 = exact_solution(50)
 exact_fig = plot(exact_sol_arr,x50,y50,'contour')
 
@@ -156,7 +147,7 @@ jacobi_iter_fig = plot(jacobi_res_100,fig=jacobi_iter_fig,ax=jacobi_iter_ax, pla
 print(jacobi_res_50)
 print(exact_sol_arr)
 
-jacobi_split_fig = plot(jacobi_res_50,X=x50,Y=y50,fig=jacobi_split_fig,ax=jacobi_split_ax, plabel= 'ix = jx = 50',type='split')
+jacobi_split_fig = plot(jacobi_sol_arr_50,X=x50,Y=y50,fig=jacobi_split_fig,ax=jacobi_split_ax, plabel= 'ix = jx = 50',type='split')
 #jacobi_split_fig = plot(jacobi_res_100,X=x100,Y=y100,fig=jacobi_split_fig,ax=jacobi_split_ax, plabel= 'ix = jx = 100',type='split')
 jacobi_split_fig = plot(exact_sol_arr,X=x50,Y=y50,fig=jacobi_split_fig,ax=jacobi_split_ax, plabel= 'Exact',type='split')
 
