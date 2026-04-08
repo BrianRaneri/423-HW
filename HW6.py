@@ -12,11 +12,12 @@ def plot(arr,X=None,Y=None,type='resid',fig=None,ax=None,plabel=None,ptitle = No
         fig = ax.figure
 
     if type == 'contour':
-        contour_obj = ax.contourf(X, Y, arr, levels=20)
+        contour_obj = ax.contourf(X, Y, arr, levels=20, vmin=0, vmax=1.5)
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.set_aspect('equal')
         fig.colorbar(contour_obj, ax=ax)
+
 
         ax.set_title('Exact Solution Contour Plot')
 
@@ -125,7 +126,7 @@ def gauss(nx):
         res = np.max(resid_arr)
         resid_final.append((iter, res))
 
-        if (iter % 250 == 0):
+        if (iter % 50 == 0):
             print(f'iter {iter}: res: {res} ')
 
         if res<tol:
@@ -167,12 +168,12 @@ def jacobi(nx):
         resid_final.append((iter, res))
         sol_arr = np.copy(updated_sol_arr)
 
-        if (iter % 250 == 0):
+        if (iter % 50 == 0):
             print(f'iter {iter}: res: {res} ')
 
         if res<tol:
             print(f'Jacobi Method Converged at {iter} iterations')
-            return sol_arr.reshape((nx, nx)),resid_final, x_jacobi, y_jacobi
+            break
 
     return sol_arr.reshape((nx,nx)), resid_final, x_jacobi, y_jacobi
 
@@ -218,13 +219,94 @@ def SOR(nx,omega):
     return sol_arr.reshape((nx, nx)),resid_final, x_SOR, y_SOR
 
 def SLOR(nx,omega):
-    return 0
+    
+    x_SLOR,y_SLOR,phi_arr = create_grid(nx)
+
+    sol_arr = np.copy(phi_arr)
+    sol_arr = set_bc(sol_arr)
+    tol = 1e-5    
+
+    Nx, Ny = sol_arr.shape
+    dx = L / (Nx - 1)
+    dy = W / (Ny - 1)
+
+    resid_arr = np.zeros_like(sol_arr)
+    resid_final = []
+
+    qj = -2*(1/dx**2+1/dy**2)
+    pj = 1/dy**2
+    rj = pj
+
+    sj = np.zeros(Ny)
+    r_hat = np.zeros(Ny)
+    s_hat = np.zeros(Ny) 
+
+
+    for iter in range(1,2000):
+
+        for i in range(1,Nx-1):
+
+            # Reset Arrays
+            sj[:] = 0
+            r_hat[:] = 0
+            s_hat[:] = 0
+            old_col = sol_arr[i, :].copy()
+
+            # Create Sj array
+            for j in range(1,Ny-1):
+                sj[j] = (-1/dx**2)*(sol_arr[i+1,j]+sol_arr[i-1,j])
+
+            # Boundary Conditions
+            sj[Ny-2] -= rj * sol_arr[(Nx // 2),-1]
+            sj[1] -= pj * sol_arr[(Nx // 2),0]
+            
+            # Forward Sweep
+            r_hat[1] = rj / qj
+            s_hat[1] = sj[1] / qj
+            for j in range(2, Ny-1):
+                denom = qj - pj * r_hat[j-1]
+                r_hat[j] = rj / denom if j < Ny-1 else 0.0
+                s_hat[j] = (sj[j] - pj * s_hat[j-1]) / denom
+
+            # Reverse Sweep
+            phi_col = np.zeros(Ny)            
+            phi_col[0] = 0
+            phi_col[-1] = 1
+            phi_col[Ny-2] = s_hat[Ny-2]
+
+            for j in reversed(range(1,Ny-2)):
+                phi_col[j] = s_hat[j] - r_hat[j] * phi_col[j+1]
+
+            phi_col_relaxed = (1-omega)*old_col + omega*phi_col
+            sol_arr[i,1:-1] = phi_col_relaxed[1:-1]
+
+
+        
+        # Calculate Residuals
+        for i in range(1,len(sol_arr[0])-1):
+            for j in range(1,len(sol_arr[1])-1):
+                resid_arr[i,j] = (sol_arr[i+1,j]-2*sol_arr[i,j]+sol_arr[i-1,j])/(dx**2)+(sol_arr[i,j+1]-2*sol_arr[i,j]+sol_arr[i,j-1])/(dy**2)       
+
+        res = np.max(resid_arr)
+        resid_final.append((iter, res))
+
+        if (iter % 250 == 0):
+            print(f'iter {iter}: res: {res} ')
+
+        if res<tol:
+            print(f'Jacobi Method Converged at {iter} iterations')
+            break
+        
+
+
+    return sol_arr.reshape((Nx, Ny)),resid_final, x_SLOR, y_SLOR
+
 
 L = 1
 W = 1
 
-exact_sol_arr, x50, y50 = exact_solution(50)
-exact_fig = plot(exact_sol_arr,x50,y50,'contour')
+exact_sol_arr, x100, y100 = exact_solution(100)
+exact_fig = plot(exact_sol_arr,x100,y100,'contour')
 
 '''
 # Jacobi Method
@@ -259,9 +341,9 @@ gauss_iter_fig = plot(gauss_res_100,fig=gauss_iter_fig,ax=gauss_iter_ax, plabel=
 gauss_split_fig = plot(gauss_sol_arr_50,X=x50,Y=y50,fig=gauss_split_fig,ax=gauss_split_ax, plabel= 'ix = jx = 50',type='split')
 gauss_split_fig = plot(gauss_sol_arr_100,X=x100,Y=y100,fig=gauss_split_fig,ax=gauss_split_ax, plabel= 'ix = jx = 100',type='split')
 gauss_split_fig = plot(exact_sol_arr,X=x50,Y=y50,fig=gauss_split_fig,ax=gauss_split_ax,plabel='Exact Solution', type='split', ptitle = r'Gauss - Seidel Method $\phi(x, W/2)$')
+'''
 
-
-
+'''
 # SOR Method
 SOR_iter_fig,SOR_iter_ax =  plt.subplots()
 SOR_split_fig,SOR_split_ax =  plt.subplots()
@@ -276,7 +358,6 @@ SOR_iter_fig = plot(SOR_res_100,fig=SOR_iter_fig,ax=SOR_iter_ax, plabel= 'ix = j
 SOR_split_fig = plot(SOR_sol_arr_50,X=x50,Y=y50,fig=SOR_split_fig,ax=SOR_split_ax, plabel= 'ix = jx = 50',type='split')
 SOR_split_fig = plot(SOR_sol_arr_100,X=x100,Y=y100,fig=SOR_split_fig,ax=SOR_split_ax, plabel= 'ix = jx = 100',type='split')
 SOR_split_fig = plot(exact_sol_arr,X=x50,Y=y50,fig=SOR_split_fig,ax=SOR_split_ax,plabel='Exact Solution', type='split',ptitle = r'SOR Method $\phi(x, W/2)$')
-
 '''
 
 
@@ -288,11 +369,12 @@ print('Starting SLOR Method...')
 SLOR_sol_arr_100, SLOR_res_100, x100 , y100 = SLOR(100, omega = 1.8)
 SLOR_sol_arr_50, SLOR_res_50, x50, y50 = SLOR(50, omega = 1.8)
 
+
 SLOR_iter_fig = plot(SLOR_res_50,fig=SLOR_iter_fig,ax=SOR_iter_ax, plabel= 'ix = jx = 50')
 SLOR_iter_fig = plot(SLOR_res_100,fig=SLOR_iter_fig,ax=SOR_iter_ax, plabel= 'ix = jx = 100',ptitle = 'SLOR Method Residuals')
 
 SLOR_split_fig = plot(SLOR_sol_arr_50,X=x50,Y=y50,fig=SLOR_split_fig,ax=SOR_split_ax, plabel= 'ix = jx = 50',type='split')
 SLOR_split_fig = plot(SLOR_sol_arr_100,X=x100,Y=y100,fig=SLOR_split_fig,ax=SOR_split_ax, plabel= 'ix = jx = 100',type='split')
 SLOR_split_fig = plot(exact_sol_arr,X=x50,Y=y50,fig=SLOR_split_fig,ax=SOR_split_ax,plabel='Exact Solution', type='split',ptitle = r'SLOR Method $\phi(x, W/2)$')
-
+SLOR_contor = plot(SLOR_sol_arr_50,x50,y50,'contour')
 plt.show()
