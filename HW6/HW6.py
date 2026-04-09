@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import re
 
-def plot(arr,X=None,Y=None,type='resid',fig=None,ax=None,plabel=None,ptitle = None):
+def plot(arr,X=None,Y=None,type='resid',fig=None,ax=None,plabel=None,ptitle = None,save=False):
 
     if ax is None:
         if fig is None:
@@ -57,6 +58,18 @@ def plot(arr,X=None,Y=None,type='resid',fig=None,ax=None,plabel=None,ptitle = No
             ax.set_title('Test')
         else:
             ax.set_title(ptitle)
+
+    
+
+    if save:
+        if ptitle is None:
+            filename = "plot.png"
+        else:
+            # Replace spaces/special chars with underscores
+            filename = re.sub(r'[^\w\-_\. ]', '_', ptitle) + ".png"
+        fig.savefig(filename, bbox_inches='tight', dpi=300)
+        print(f"Saved figure as {filename}")
+
 
 
     return fig
@@ -119,14 +132,14 @@ def gauss(nx):
                 sol_arr[i,j] = phi_new
                 
         # Calculate Residuals
-        for i in range(1,len(sol_arr[0])-1):
-            for j in range(1,len(sol_arr[1])-1):
+        for i in range(1,Nx-1):
+            for j in range(1,Ny-1):
                 resid_arr[i,j] = (sol_arr[i+1,j]-2*sol_arr[i,j]+sol_arr[i-1,j])/(dx**2)+(sol_arr[i,j+1]-2*sol_arr[i,j]+sol_arr[i,j-1])/(dy**2)       
 
         res = np.max(resid_arr)
         resid_final.append((iter, res))
 
-        if (iter % 50 == 0):
+        if (iter % 1000 == 0):
             print(f'iter {iter}: res: {res} ')
 
         if res<tol:
@@ -153,7 +166,7 @@ def jacobi(nx):
     sigma = (dx/dy)
  
 
-    for iter in range(1,20000):
+    for iter in range(1,50000):
         for i in range(1,Nx-1):
             for j in range(1,Ny-1):
                 updated_sol_arr[i,j] = (sigma**2*(sol_arr[i,j+1]+sol_arr[i,j-1])+sol_arr[i+1,j]+sol_arr[i-1,j])/(2*(1+sigma**2))
@@ -306,9 +319,8 @@ L = 1
 W = 1
 
 exact_sol_arr, x100, y100 = exact_solution(100)
-exact_fig = plot(exact_sol_arr,x100,y100,'contour')
+exact_fig = plot(exact_sol_arr,x100,y100,'contour',ptitle = 'Exact Solution Contour',save=True)
 
-'''
 # Jacobi Method
 jacobi_iter_fig,jacobi_iter_ax =  plt.subplots()
 jacobi_split_fig,jacobi_split_ax =  plt.subplots()
@@ -319,11 +331,11 @@ jacobi_sol_arr_50, jacobi_res_50, x50, y50 = jacobi(50)
 
 
 jacobi_iter_fig = plot(jacobi_res_50,fig=jacobi_iter_fig,ax=jacobi_iter_ax, plabel= 'ix = jx = 50')
-jacobi_iter_fig = plot(jacobi_res_100,fig=jacobi_iter_fig,ax=jacobi_iter_ax, plabel= 'ix = jx = 100',ptitle = 'Jacobi Method Residuals')
+jacobi_iter_fig = plot(jacobi_res_100,fig=jacobi_iter_fig,ax=jacobi_iter_ax, plabel= 'ix = jx = 100',ptitle = 'Jacobi Method Residuals',save=True)
 
 jacobi_split_fig = plot(jacobi_sol_arr_50,X=x50,Y=y50,fig=jacobi_split_fig,ax=jacobi_split_ax, plabel= 'ix = jx = 50',type='split')
 jacobi_split_fig = plot(jacobi_sol_arr_100,X=x100,Y=y100,fig=jacobi_split_fig,ax=jacobi_split_ax, plabel= 'ix = jx = 100',type='split')
-jacobi_split_fig = plot(exact_sol_arr,X=x50,Y=y50,fig=jacobi_split_fig,ax=jacobi_split_ax,plabel='Exact Solution',type='split',ptitle = r'Jacobi Method $\phi(x, W/2)$')
+jacobi_split_fig = plot(exact_sol_arr,X=x50,Y=y50,fig=jacobi_split_fig,ax=jacobi_split_ax,plabel='Exact Solution',type='split',ptitle = r'Jacobi Method $\phi(x, W/2)$',save=True)
 
 
 
@@ -336,14 +348,14 @@ gauss_sol_arr_100, gauss_res_100, x100 , y100 = gauss(100)
 gauss_sol_arr_50, gauss_res_50, x50, y50 = gauss(50)
 
 gauss_iter_fig = plot(gauss_res_50,fig=gauss_iter_fig,ax=gauss_iter_ax, plabel= 'ix = jx = 50')
-gauss_iter_fig = plot(gauss_res_100,fig=gauss_iter_fig,ax=gauss_iter_ax, plabel= 'ix = jx = 100',ptitle = 'Gauss - Seidel Method Residuals')
+gauss_iter_fig = plot(gauss_res_100,fig=gauss_iter_fig,ax=gauss_iter_ax, plabel= 'ix = jx = 100',ptitle = 'Gauss - Seidel Method Residuals',save=True)
 
 gauss_split_fig = plot(gauss_sol_arr_50,X=x50,Y=y50,fig=gauss_split_fig,ax=gauss_split_ax, plabel= 'ix = jx = 50',type='split')
 gauss_split_fig = plot(gauss_sol_arr_100,X=x100,Y=y100,fig=gauss_split_fig,ax=gauss_split_ax, plabel= 'ix = jx = 100',type='split')
-gauss_split_fig = plot(exact_sol_arr,X=x50,Y=y50,fig=gauss_split_fig,ax=gauss_split_ax,plabel='Exact Solution', type='split', ptitle = r'Gauss - Seidel Method $\phi(x, W/2)$')
-'''
+gauss_split_fig = plot(exact_sol_arr,X=x50,Y=y50,fig=gauss_split_fig,ax=gauss_split_ax,plabel='Exact Solution', type='split', ptitle = r'Gauss - Seidel Method $\phi(x, W/2)$',save=True)
 
-'''
+
+
 # SOR Method
 SOR_iter_fig,SOR_iter_ax =  plt.subplots()
 SOR_split_fig,SOR_split_ax =  plt.subplots()
@@ -353,12 +365,12 @@ SOR_sol_arr_100, SOR_res_100, x100 , y100 = SOR(100, omega = 1.8)
 SOR_sol_arr_50, SOR_res_50, x50, y50 = SOR(50, omega = 1.8)
 
 SOR_iter_fig = plot(SOR_res_50,fig=SOR_iter_fig,ax=SOR_iter_ax, plabel= 'ix = jx = 50')
-SOR_iter_fig = plot(SOR_res_100,fig=SOR_iter_fig,ax=SOR_iter_ax, plabel= 'ix = jx = 100',ptitle = 'SOR Method Residuals')
+SOR_iter_fig = plot(SOR_res_100,fig=SOR_iter_fig,ax=SOR_iter_ax, plabel= 'ix = jx = 100',ptitle = 'SOR Method Residuals',save=True)
 
 SOR_split_fig = plot(SOR_sol_arr_50,X=x50,Y=y50,fig=SOR_split_fig,ax=SOR_split_ax, plabel= 'ix = jx = 50',type='split')
 SOR_split_fig = plot(SOR_sol_arr_100,X=x100,Y=y100,fig=SOR_split_fig,ax=SOR_split_ax, plabel= 'ix = jx = 100',type='split')
-SOR_split_fig = plot(exact_sol_arr,X=x50,Y=y50,fig=SOR_split_fig,ax=SOR_split_ax,plabel='Exact Solution', type='split',ptitle = r'SOR Method $\phi(x, W/2)$')
-'''
+SOR_split_fig = plot(exact_sol_arr,X=x50,Y=y50,fig=SOR_split_fig,ax=SOR_split_ax,plabel='Exact Solution', type='split',ptitle = r'SOR Method $\phi(x, W/2)$',save=True)
+
 
 
 # SLOR Method
@@ -371,10 +383,9 @@ SLOR_sol_arr_50, SLOR_res_50, x50, y50 = SLOR(50, omega = 1.8)
 
 
 SLOR_iter_fig = plot(SLOR_res_50,fig=SLOR_iter_fig,ax=SOR_iter_ax, plabel= 'ix = jx = 50')
-SLOR_iter_fig = plot(SLOR_res_100,fig=SLOR_iter_fig,ax=SOR_iter_ax, plabel= 'ix = jx = 100',ptitle = 'SLOR Method Residuals')
+SLOR_iter_fig = plot(SLOR_res_100,fig=SLOR_iter_fig,ax=SOR_iter_ax, plabel= 'ix = jx = 100',ptitle = 'SLOR Method Residuals',save=True)
 
 SLOR_split_fig = plot(SLOR_sol_arr_50,X=x50,Y=y50,fig=SLOR_split_fig,ax=SOR_split_ax, plabel= 'ix = jx = 50',type='split')
 SLOR_split_fig = plot(SLOR_sol_arr_100,X=x100,Y=y100,fig=SLOR_split_fig,ax=SOR_split_ax, plabel= 'ix = jx = 100',type='split')
-SLOR_split_fig = plot(exact_sol_arr,X=x50,Y=y50,fig=SLOR_split_fig,ax=SOR_split_ax,plabel='Exact Solution', type='split',ptitle = r'SLOR Method $\phi(x, W/2)$')
-SLOR_contor = plot(SLOR_sol_arr_50,x50,y50,'contour')
-plt.show()
+SLOR_split_fig = plot(exact_sol_arr,X=x50,Y=y50,fig=SLOR_split_fig,ax=SOR_split_ax,plabel='Exact Solution', type='split',ptitle = r'SLOR Method $\phi(x, W/2)$',save=True)
+#plt.show()
