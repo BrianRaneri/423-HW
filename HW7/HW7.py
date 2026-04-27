@@ -13,31 +13,37 @@ def plot(arr,X=None,Y=None,type='resid',fig=None,ax=None,plabel=None,ptitle = No
         fig = ax.figure
 
     if type == 'contour':
-        contour_obj = ax.contourf(X, Y, arr, levels=20, vmin=0, vmax=1.5)
+        contour_obj = ax.contourf(X, Y, arr, levels=50)
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.set_aspect('equal')
         fig.colorbar(contour_obj, ax=ax)
+        ax.set_title(ptitle)
 
+    if type == 'Cp':
 
-        ax.set_title('Exact Solution Contour Plot')
+        Nx,Ny = arr.shape
+        dx = 2 * L / (Nx-1)
+        x_cp = []
+        cp_arr = []
 
-    if type == 'split':
+        for i in range(1, Nx - 1):
+            x = -L + i * dx
+            
+            if 0 < x <= 1:
+                u = (arr[i + 1, 0] - arr[i - 1, 0]) / (2 * dx)
+                x_cp.append(x)
+                cp_arr.append(-2*u)
 
-        arr = np.array(arr)
-        j_mid = arr.shape[1] // 2
-        phi_x_slice = arr[:, j_mid]
-        x_vals = np.linspace(0, 1, arr.shape[0])
-
-        ax.plot(x_vals, phi_x_slice, label=plabel)
+        ax.plot(x_cp, cp_arr, linewidth=2)
         ax.set_xlabel('x')
-        ax.set_ylabel(f'Phi(y=0.5)')
-        if ptitle is None:
-            ax.set_title(r'$\phi(x, W/2)$')
-        else:
-            ax.set_title(ptitle)
+        ax.set_ylabel('$C_p$')
         ax.grid(True)
-        ax.legend()
+        ax.invert_yaxis()
+        ax.set_title(ptitle)
+
+
+
 
     if type == 'resid':
         iter_arr = [x[0] for x in arr]
@@ -88,6 +94,56 @@ def set_bc(arr):
 
     return arr
 
+def floating_bc(sol_arr,i):
+    Nx,Ny = sol_arr.shape
+    dx = 2*L / (Nx - 1)
+    dy = H / (Ny - 1)
+    x = -L + dx*i
+
+    if x <= 0 or x>=1:
+        p = 0 
+        r =  2/dy**2
+        q = -2/dx**2 - 2/dy**2
+        s = -(sol_arr[i+1,0] + sol_arr[i-1,0]) / dx**2
+    else:
+        p = 0
+        r = 1/dy**2
+        q = -2/dx**2 - 1/dy**2
+        s = -(sol_arr[i+1,0] + sol_arr[i-1,0]) / dx**2 + airfoil_slope(x)/dy
+
+    return p, q, r, s
+
+def build_tri(sol_arr,i):
+    Nx,Ny = sol_arr.shape
+    dx = 2*L / (Nx - 1)
+    dy = H / (Ny - 1)    
+
+    # Include bottom + interior
+    n = Ny - 1
+
+    p = np.zeros(n)
+    q = np.zeros(n)
+    r = np.zeros(n)
+    s = np.zeros(n)
+
+    p[0], q[0], r[0], s[0] = floating_bc(sol_arr, i)
+
+    for j in range(1, n):
+
+        p[j] = 1/dy**2
+        r[j] = 1/dy**2
+        q[j] = -2*(1/dx**2 + 1/dy**2)
+
+        s[j] = -(1/dx**2) * (
+            sol_arr[i+1, j] + sol_arr[i-1, j]
+        )
+
+    # Top BC
+    q[-1] += r[-1]
+    r[-1] = 0
+
+    return p,q,r,s
+
 def create_grid(dx):
     x_arr = np.arange(-L,L+dx,dx)
     y_arr = np.arange(0,H+dx,dx)
@@ -95,13 +151,9 @@ def create_grid(dx):
     phi_arr = np.zeros((len(x_arr),len(y_arr)))
     return X,Y,phi_arr
 
-def SLOR(nx,omega):
+def SLOR(nx,omega,tol,M_inf=0):
     
-    x_SLOR,y_SLOR,phi_arr = create_grid(nx)
-
-    sol_arr = np.copy(phi_arr)
-    sol_arr = set_bc(sol_arr)
-    tol = 1e-0    
+    x_SLOR,y_SLOR,sol_arr = create_grid(nx)
 
     Nx, Ny = sol_arr.shape
     dx = 2*L / (Nx - 1)
@@ -110,52 +162,38 @@ def SLOR(nx,omega):
     resid_arr = np.zeros_like(sol_arr)
     resid_final = []
 
-    qj = -2*(1/dx**2+1/dy**2)
-    pj = 1/dy**2
-    rj = pj
-
-    sj = np.zeros(Ny)
-    r_hat = np.zeros(Ny)
-    s_hat = np.zeros(Ny) 
-
-
     for iter in range(1,2000):
 
         for i in range(1,Nx-1):
 
-            # Reset Arrays
-            sj[:] = 0
-            r_hat[:] = 0
-            s_hat[:] = 0
             old_col = sol_arr[i, :].copy()
+            p, q, r, s = build_tri(sol_arr, i)
 
-            # Create Sj array
-            for j in range(1,Ny-1):
-                sj[j] = (-1/dx**2)*(sol_arr[i+1,j]+sol_arr[i-1,j])
-
-            # Boundary Conditions
-            sj[Ny-2] -= rj * sol_arr[i, -1]
-            sj[1]    -= pj * sol_arr[i, 0]
+            n = Ny - 1
 
             # Forward Sweep
-            r_hat[1] = rj / qj
-            s_hat[1] = sj[1] / qj
-            for j in range(2, Ny-1):
-                denom = qj - pj * r_hat[j-1]
-                r_hat[j] = rj / denom if j < Ny-1 else 0.0
-                s_hat[j] = (sj[j] - pj * s_hat[j-1]) / denom
+            r_hat = np.zeros(n)
+            s_hat = np.zeros(n)
+            phi = np.zeros(n)
+
+            r_hat[0] = r[0] / q[0]
+            s_hat[0] = s[0] / q[0]
+
+            for j in range(1, n):
+                denom = q[j] - p[j] * r_hat[j-1]
+                r_hat[j] = r[j]/denom
+                s_hat[j] = (s[j] - p[j] * s_hat[j-1]) / denom
 
             # Reverse Sweep
-            phi_col = np.zeros(Ny)            
-            phi_col[0] = 0
-            phi_col[-1] = 1
-            phi_col[Ny-2] = s_hat[Ny-2]
+            phi = np.zeros(n)            
 
-            for j in reversed(range(1,Ny-2)):
-                phi_col[j] = s_hat[j] - r_hat[j] * phi_col[j+1]
+            for j in reversed(range(n)):
+                if j == n - 1:
+                    phi[j] = s_hat[j]
+                else:
+                    phi[j] = s_hat[j]-r_hat[j] * phi[j+1]
 
-            phi_col_relaxed = (1-omega)*old_col + omega*phi_col
-            sol_arr[i,1:-1] = phi_col_relaxed[1:-1]
+            sol_arr[i, 0:n] = ((1 - omega) * old_col[0:n] + omega * phi)
 
         # Calculate Residuals
         for i in range(1,Nx-1):
@@ -280,25 +318,16 @@ def airfoil_slope(x):
 
 L = 5
 H = 5
-#M_inf = 0.1375
-M_inf = 0.0
 gamma = 1.4
 
 # SLOR Method
-SLOR_iter_fig,SLOR_iter_ax =  plt.subplots()
-SLOR_split_fig,SLOR_split_ax =  plt.subplots()
-SLORT_split_fig,SLORT_split_ax =  plt.subplots()
-
-x_SLOR,y_SLOR,phi_arr = create_grid(0.025)
+M0_iter_fig,M0_iter_ax =  plt.subplots()
+M0_contour_fig,M0_contour_ax =  plt.subplots()
+Cp_fig,Cp_ax =  plt.subplots()
 
 print('Starting SLOR Method...')
-SLOR_sol_arr_100, SLOR_res_100, x100 , y100 = SLOR(0.025, omega = 1.7)
-SLORT_sol_arr_100, SLOR_res_100, x100 , y100 = SLORT(0.025, omega = 1.7)
-
-#SLOR_iter_fig = plot(SLOR_res_100,fig=SLOR_iter_fig,ax=SLOR_iter_ax, plabel= 'ix = jx = 100',ptitle = 'SLOR Method Residuals',save=False)
-
-#SLOR_split_fig = plot(SLOR_sol_arr_100,X=x100,Y=y100,fig=SLOR_split_fig,ax=SOR_split_ax, plabel= 'ix = jx = 100',type='split')
-SLOR_split_fig = plot(SLOR_sol_arr_100,X=x100,Y=y100,type = 'contour', ptitle = 'SLOR',save=True,fig = SLOR_split_fig,ax = SLOR_split_ax)
-SLORT_split_fig = plot(SLORT_sol_arr_100,X=x100,Y=y100,type = 'contour', ptitle = 'SLORT',save=True,fig = SLORT_split_fig,ax = SLORT_split_ax)
+M0_sol_arr, M0_res, x , y = SLOR(0.02, omega = 1.7,tol = 1e-2,M_inf = 0)
+plot(M0_sol_arr,X=x,Y=y,type = 'contour', ptitle = 'M=0.0 Contour Plot',save=False,fig = M0_contour_fig,ax = M0_contour_ax)
+plot(M0_sol_arr,type = 'Cp', ptitle = 'M=0.0 Cp Plot',save=False,fig = Cp_fig,ax = Cp_ax)
 
 plt.show()
