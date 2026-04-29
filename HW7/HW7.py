@@ -38,6 +38,8 @@ def plot(arr,X=None,Y=None,type='resid',fig=None,ax=None,plabel=None,ptitle = No
 
     if type == 'Cp':
 
+        plt.rcParams['lines.markersize'] = 4
+
         Nx,Ny = arr.shape
         dx = 2 * L / (Nx-1)
         x_cp = []
@@ -182,7 +184,7 @@ def SLOR(nx,omega,tol,M_inf=0):
     resid_arr = np.zeros_like(sol_arr)
     resid_final = []
 
-    for iter in range(1,100000):
+    for iter in range(1,5000):
 
         for i in range(1,Nx-1):
 
@@ -239,7 +241,7 @@ def SLOR(nx,omega,tol,M_inf=0):
     return sol_arr.reshape((Nx, Ny)),resid_final, x_SLOR, y_SLOR
 
 def airfoil_slope(x):
-    x = max(x, 1e-2)
+    x = max(x, 5e-3)
     slope = 0.6*(0.14845*x**-0.5-0.1260-0.7032*x+0.8529*x**2-0.406*x**3)
     return slope
 
