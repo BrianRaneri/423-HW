@@ -1,8 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import re
+import os
 
-def plot(arr,X=None,Y=None,type='resid',fig=None,ax=None,plabel=None,ptitle = None,save=False):
+def plot(arr,X=None,Y=None,type='resid',fig=None,ax=None,plabel=None,ptitle = None,save=False,flip=False,label=None):
 
     if ax is None:
         if fig is None:
@@ -13,10 +14,25 @@ def plot(arr,X=None,Y=None,type='resid',fig=None,ax=None,plabel=None,ptitle = No
         fig = ax.figure
 
     if type == 'contour':
-        contour_obj = ax.contourf(X, Y, arr, levels=50)
+
+        # Crop
+        crop_x = (X[:,0] >= -1) & (X[:,0] <= 2)
+        crop_y = (Y[0,:] >= 0) & (Y[0,:] <= 1)
+
+        arr_crop = arr[np.ix_(crop_x, crop_y)]
+
+        vmin = np.min(arr_crop)
+        vmax = np.max(arr_crop)
+
+        levels = np.linspace(vmin, vmax, 50)
+        contour_obj = ax.contourf(X, Y, arr, levels=levels, vmin=vmin, vmax=vmax)
+
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.set_aspect('equal')
+        ax.set_xlim(-1, 2)
+        ax.set_ylim(0, 1)
+
         fig.colorbar(contour_obj, ax=ax)
         ax.set_title(ptitle)
 
@@ -30,18 +46,22 @@ def plot(arr,X=None,Y=None,type='resid',fig=None,ax=None,plabel=None,ptitle = No
         for i in range(1, Nx - 1):
             x = -L + i * dx
             
-            if 0 < x <= 1:
-                u = (arr[i + 1, 0] - arr[i - 1, 0]) / (2 * dx)
+            if 0 <= x <= 1:
+                u = (arr[i + 1, 0] - arr[i - 1, 0]) / (2*dx)
                 x_cp.append(x)
                 cp_arr.append(-2*u)
 
-        ax.plot(x_cp, cp_arr, linewidth=2)
+        ax.plot(x_cp, cp_arr, linewidth=2,label=label,marker='o')
         ax.set_xlabel('x')
         ax.set_ylabel('$C_p$')
         ax.grid(True)
-        ax.invert_yaxis()
-        ax.set_title(ptitle)
 
+        if flip:
+            ax.invert_yaxis()
+        ax.set_title(ptitle)
+        ax.legend()
+
+        ax.set_ylim(0.6,-1)
 
 
 
@@ -71,54 +91,57 @@ def plot(arr,X=None,Y=None,type='resid',fig=None,ax=None,plabel=None,ptitle = No
         if ptitle is None:
             filename = "plot.png"
         else:
-            # Replace spaces/special chars with underscores
             filename = re.sub(r'[^\w\-_\. ]', '_', ptitle) + ".png"
+
+        os.chdir(os.path.dirname(os.path.realpath(__file__)))
         fig.savefig(filename, bbox_inches='tight', dpi=300)
         print(f"Saved figure as {filename}")
 
-
-
     return fig
 
-def set_bc(arr):
-    Nx, Ny = arr.shape
-
-    '''
-    for i in range(Nx):
-        arr[i,-1] = 1
-    '''
-    
-    for j in range(Ny):
-        arr[0,j] = 1
-
-
-    return arr
-
-def floating_bc(sol_arr,i):
+def floating_bc(sol_arr,i,M_inf):
     Nx,Ny = sol_arr.shape
     dx = 2*L / (Nx - 1)
     dy = H / (Ny - 1)
     x = -L + dx*i
 
-    if x <= 0 or x>=1:
+    non_linear_term = (sol_arr[i+1,0] - sol_arr[i-1,0]) / (2*dx)
+    factor = (1 - M_inf**2) - (gamma + 1) * M_inf**2 * non_linear_term
+
+    if x < 0 or x>1:
         p = 0 
         r =  2/dy**2
-        q = -2/dx**2 - 2/dy**2
-        s = -(sol_arr[i+1,0] + sol_arr[i-1,0]) / dx**2
+        q = -2*factor/dx**2 -2/dy**2
+        s = -factor * (sol_arr[i+1,0] + sol_arr[i-1,0])/dx**2
+        
     else:
         p = 0
         r = 1/dy**2
-        q = -2/dx**2 - 1/dy**2
-        s = -(sol_arr[i+1,0] + sol_arr[i-1,0]) / dx**2 + airfoil_slope(x)/dy
+        q = -2*factor/dx**2 -1/dy**2
+        s = -factor * (sol_arr[i+1,0] + sol_arr[i-1,0])/dx**2 + airfoil_slope(x)/dy
 
     return p, q, r, s
 
-def build_tri(sol_arr,i):
+def compute_residual(sol_arr, i, j, M_inf):
+
+    Nx,Ny = sol_arr.shape
+    dx = 2*L/((Nx-1))
+    dy = H/((Ny-1))
+
+    non_linear_term = (sol_arr[i+1,j] - sol_arr[i-1,j]) / (2*dx)
+    factor = (1 - M_inf**2) - (gamma + 1)*M_inf**2 * non_linear_term
+
+    phi_xx = (sol_arr[i+1,j] - 2*sol_arr[i,j] + sol_arr[i-1,j]) / dx**2
+    phi_yy = (sol_arr[i,j+1] - 2*sol_arr[i,j] + sol_arr[i,j-1]) / dy**2
+
+    return factor*phi_xx + phi_yy
+
+def build_tri(sol_arr,i,M_inf):
     Nx,Ny = sol_arr.shape
     dx = 2*L / (Nx - 1)
     dy = H / (Ny - 1)    
 
-    # Include bottom + interior
+    # Include bottom and interior
     n = Ny - 1
 
     p = np.zeros(n)
@@ -126,17 +149,17 @@ def build_tri(sol_arr,i):
     r = np.zeros(n)
     s = np.zeros(n)
 
-    p[0], q[0], r[0], s[0] = floating_bc(sol_arr, i)
+    p[0], q[0], r[0], s[0] = floating_bc(sol_arr, i,M_inf)
 
     for j in range(1, n):
 
-        p[j] = 1/dy**2
-        r[j] = 1/dy**2
-        q[j] = -2*(1/dx**2 + 1/dy**2)
+        non_linear_term = (sol_arr[i+1,j] - sol_arr[i-1,j]) / (2*dx)
+        factor = (1 - M_inf**2) - (gamma + 1) * M_inf**2 * non_linear_term
 
-        s[j] = -(1/dx**2) * (
-            sol_arr[i+1, j] + sol_arr[i-1, j]
-        )
+        p[j] = 1 / dy**2
+        r[j] = 1 / dy**2
+        q[j] = -2*(factor / dx**2 + 1 / dy**2)
+        s[j] = -factor * (sol_arr[i+1,j] + sol_arr[i-1,j]) / dx**2
 
     # Top BC
     q[-1] += r[-1]
@@ -154,20 +177,17 @@ def create_grid(dx):
 def SLOR(nx,omega,tol,M_inf=0):
     
     x_SLOR,y_SLOR,sol_arr = create_grid(nx)
-
     Nx, Ny = sol_arr.shape
-    dx = 2*L / (Nx - 1)
-    dy = H / (Ny - 1)
 
     resid_arr = np.zeros_like(sol_arr)
     resid_final = []
 
-    for iter in range(1,2000):
+    for iter in range(1,100000):
 
         for i in range(1,Nx-1):
 
             old_col = sol_arr[i, :].copy()
-            p, q, r, s = build_tri(sol_arr, i)
+            p, q, r, s = build_tri(sol_arr, i,M_inf)
 
             n = Ny - 1
 
@@ -198,136 +218,49 @@ def SLOR(nx,omega,tol,M_inf=0):
         # Calculate Residuals
         for i in range(1,Nx-1):
             for j in range(1,Ny-1):
-                resid_arr[i,j] = (sol_arr[i+1,j]-2*sol_arr[i,j]+sol_arr[i-1,j])/(dx**2)+(sol_arr[i,j+1]-2*sol_arr[i,j]+sol_arr[i,j-1])/(dy**2)       
+                resid_arr[i,j] =  compute_residual(sol_arr,i,j,M_inf)    
 
         res = np.max(resid_arr)
         resid_final.append((iter, res))
         print(f'iter {iter}: res: {res} ')
 
         if res<tol:
-            print(f'Jacobi Method Converged at {iter} iterations')
+            print(f'Converged at {iter} iterations')
             break
-        
 
-    return sol_arr.reshape((Nx, Ny)),resid_final, x_SLOR, y_SLOR
+        if len(resid_final)>50:
+            compare_res = resid_final[-10:]
+            if all(x[1] < y[1] for x, y in zip(compare_res, compare_res[1:])):
+                print(f'Converged at {iter} iterations (increasing)' )
+                break
 
-def SLORT(nx,omega):
-    
-    x_SLOR,y_SLOR,phi_arr = create_grid(nx)
-
-    sol_arr = np.copy(phi_arr)
-    sol_arr = set_bc(sol_arr)
-    tol = 1e-0    
-
-    Nx, Ny = sol_arr.shape
-    dx = 2*L / (Nx - 1)
-    dy = H / (Ny - 1)
-
-    resid_arr = np.zeros_like(sol_arr)
-    resid_final = []
-
-    qj = -2*(1/dx**2+1/dy**2)
-    pj = 1/dy**2
-    rj = pj
-
-    sj = np.zeros(Ny)
-    r_hat = np.zeros(Ny)
-    s_hat = np.zeros(Ny) 
-
-
-    for iter in range(1,2000):
-
-        for i in range(1,Nx-1):
-
-            p = 1 / dx**2
-            r = 1 / dx**2
-            q = -2 * (1/dx**2 + 1/dy**2)
-
-
-            sj = np.zeros(Ny)
-            r_hat = np.zeros(Ny)
-            s_hat = np.zeros(Ny)
-
-            old_col = sol_arr[i, :].copy()
-
-            phi_left  = sol_arr[i - 1, :]
-            phi_right = sol_arr[i + 1, :]
-
-            phi_bottom = sol_arr[i, 1]
-            phi_top    = sol_arr[i, -1]
-
-            for j in range(1, Ny - 1):
-                non_linear_term = (sol_arr[i+1, j] - sol_arr[i-1, j]) / (2*dx)
-                factor = 1 - M_inf**2 - (gamma + 1) * M_inf**2 * non_linear_term                
-
-                sj[j] = factor * -(phi_right[j] + phi_left[j]) / dx**2
-
-            # Boundary Conditions
-            #sj[1]    -= p * phi_bottom
-            sj[Ny-2] -= r * phi_top
-
-            # Forward Sweep
-            r_hat[1] = r / q
-            s_hat[1] = sj[1] / q
-
-            for j in range(2, Ny-1):
-                denom = q - p * r_hat[j-1]
-                r_hat[j] = r / denom
-                s_hat[j] = (sj[j] - p * s_hat[j-1]) / denom
-
-            # Reverse Sweep
-            phi_col = np.zeros(Ny)      
-            phi_col[0] = phi_col[1]      
-            #phi_col[0] = 0
-            phi_col[-1] = 1
-            phi_col[Ny-2] = s_hat[Ny-2]
-
-            for j in reversed(range(1,Ny-2)):
-                phi_col[j] = s_hat[j] - r_hat[j] * phi_col[j+1]
-
-            phi_col_relaxed = (1-omega)*old_col + omega*phi_col
-            sol_arr[i,1:-1] = phi_col_relaxed[1:-1]
-
-        # Calculate Residuals
-        for i in range(1,Nx-1):
-            for j in range(1,Ny-1):
-                    x_term = (sol_arr[i+1, j] - 2*sol_arr[i, j] + sol_arr[i-1, j]) / dx**2
-                    y_term = (sol_arr[i, j+1] - 2*sol_arr[i, j] + sol_arr[i, j-1]) / dy**2
-
-                    # recompute factor consistently
-                    phi_x_c = (sol_arr[i+1, j] - sol_arr[i-1, j]) / (2*dx)
-                    factor = (1 - M_inf**2) - (gamma + 1) * M_inf**2 * phi_x_c
-
-                    resid_arr[i, j] = factor * x_term + y_term
-                #resid_arr[i,j] = (sol_arr[i+1,j]-2*sol_arr[i,j]+sol_arr[i-1,j])/(dx**2)+(sol_arr[i,j+1]-2*sol_arr[i,j]+sol_arr[i,j-1])/(dy**2)       
-
-        res = np.max(resid_arr)
-        resid_final.append((iter, res))
-        print(f'iter {iter}: res: {res} ')
-
-        if res<tol:
-            print(f'Jacobi Method Converged at {iter} iterations')
-            break
         
 
     return sol_arr.reshape((Nx, Ny)),resid_final, x_SLOR, y_SLOR
 
 def airfoil_slope(x):
-    return 0.6*(0.14845*x**-0.5-0.1260-0.7032*x+0.8529*x**2-0.406*x**3)
-
+    x = max(x, 1e-2)
+    slope = 0.6*(0.14845*x**-0.5-0.1260-0.7032*x+0.8529*x**2-0.406*x**3)
+    return slope
 
 L = 5
 H = 5
 gamma = 1.4
 
 # SLOR Method
-M0_iter_fig,M0_iter_ax =  plt.subplots()
+iter_fig,iter_ax =  plt.subplots()
 M0_contour_fig,M0_contour_ax =  plt.subplots()
+M07_contour_fig,M07_contour_ax =  plt.subplots()
 Cp_fig,Cp_ax =  plt.subplots()
 
-print('Starting SLOR Method...')
-M0_sol_arr, M0_res, x , y = SLOR(0.02, omega = 1.7,tol = 1e-2,M_inf = 0)
-plot(M0_sol_arr,X=x,Y=y,type = 'contour', ptitle = 'M=0.0 Contour Plot',save=False,fig = M0_contour_fig,ax = M0_contour_ax)
-plot(M0_sol_arr,type = 'Cp', ptitle = 'M=0.0 Cp Plot',save=False,fig = Cp_fig,ax = Cp_ax)
+M0_sol_arr, M0_res, x , y = SLOR(0.02, omega = 0.9,tol = 1e-4,M_inf = 0)
+M07_sol_arr, M07_res, x , y = SLOR(0.02, omega = 0.8,tol = 1e-4,M_inf = 0.7)
+plot(M0_sol_arr,X=x,Y=y,type = 'contour', ptitle = 'M = 0.0 Pressure Perturbation Contour Plot',save=True,fig = M0_contour_fig,ax = M0_contour_ax)
+plot(M07_sol_arr,X=x,Y=y,type = 'contour', ptitle = 'M = 0.7 Pressure Perturbation Contour Plot',save=True,fig = M07_contour_fig,ax = M07_contour_ax)
+plot(M0_sol_arr,type = 'Cp', save=False,fig = Cp_fig,ax = Cp_ax,label = 'M = 0.0')
+plot(M07_sol_arr,type = 'Cp', ptitle = 'NACA 0012 - 0deg AoA',save=True,fig = Cp_fig,ax = Cp_ax,flip = True,label = 'M = 0.7')
+
+iter_fig = plot(M0_res,fig=iter_fig,ax=iter_ax, plabel= 'M=0.0')
+iter_fig = plot(M07_res,fig=iter_fig,ax=iter_ax, plabel= 'M=0.7',ptitle = 'Residuals',save=True)
 
 plt.show()
